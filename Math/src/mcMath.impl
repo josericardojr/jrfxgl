@@ -1,0 +1,99 @@
+/* 
+ * File:   mcMath.impl
+ * Author: thales
+ *
+ * Created on May 18, 2010, 11:30 AM
+ */
+
+/**
+ * @brief Converte um ângulo de graus para radianos
+ *
+ * @param angle - Ângulo em graus
+ * @return O ângulo em radianos
+ */
+template<class T>
+inline T deg2rad( const T angle ) {
+	return (T) ( angle * M_PI / 180.0 );
+}
+
+/**
+ * @brief Converte um ângulo de radianos para graus
+ *
+ * @param angle - Ângulo em radianos
+ * @return O ângulo em graus
+ */
+template<class T>
+inline T rad2deg( const T angle ) {
+	return (T) ( angle * 180.0 / M_PI );
+}
+
+/**
+ * Verifica se um número é potência de 2
+ *
+ * Exemplo:
+ *
+ * 4 é potência de 2 pois:
+ *
+ * 100 && !(100 & 011)
+ * 100 && !(000)
+ * 100 && 1 = true
+ *
+ * 3 não é potência de 2 pois
+ *
+ * 011 && !(011 && 010)
+ * 011 && !(010)
+ * 011 && 0 = false
+ */
+inline bool isPower2( int num ) {
+	return ( num && !( num & ( num - 1 ) ) );
+}
+
+/**
+ * Verifica se um número é potência de 2, mas corrige esse número para
+ * a potência de 2 mais próxima
+ *
+ * @param num - Número a ser testado
+ * @return O número corrigido
+ */
+inline int getNextPower2( int num ) {
+	// Armazena o bit mais significativo
+	int msb = 0;
+
+	// Guarda o número para retornar caso num já seja potência de 2
+	int bkpNum = num;
+
+	// Número de vezes que o número precisou ser shifitado a esquerda para achar o
+	// Bit Mais Significativo (Most Significant Bit, MSB)
+	int nlshifts = 0;
+
+	// Máscara de 32 bits para determinar quando o MSB foi encontrado
+	// 1000 0000 0000 0000 0000 0000 0000 0000
+	// ^
+	// Bit mais significativo de uma palavra de 32 bits
+	const int mask = 0x80000000;
+
+	// Conta o número de lshifts necessários para alcançar o bit mais significativo
+	while ( ( num != 0 ) && ( msb == 0 ) ) {
+		msb = num & mask;
+		num = num << 1;
+		nlshifts++;
+	}
+
+	// Calcula a posição do bit mais significativo em num
+	msb = 32 - nlshifts + 1;
+
+	if ( num == 0 ) {
+		return bkpNum;
+	}
+
+	return 1 << msb;
+}
+
+/**
+ * Calcula o quadrado de um número
+ */
+template<class T>
+inline T sqr( T value ) {
+	return value * value;
+}
+
