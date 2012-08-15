@@ -80,8 +80,6 @@ namespace JRFXGL
 	  initSDL    ();
 	  initOpenGL ();
 
-	  // Inicializar gestor de log
-	  //Util::LogManager::initialize();
 	  
 	  // inicializar relógios
         mClock.reset ();
@@ -93,7 +91,7 @@ namespace JRFXGL
 	   return false;
 	  
 	  //
-        new Graphics::GUIManager();
+        //new Graphics::GUIManager();
 	  mAppWasInitialized = true;  
         mFPS = 0;
 	  
@@ -117,19 +115,19 @@ namespace JRFXGL
 	 */
 	void AppRunner::shutDown ()
 	{  
-	//  if (appWasInitialized () )
-		// {
+	  if (appWasInitialized () )
+		 {
 			// Executar um flush para o aquivo de log
-			//Util::LogManager::finalize();
+			JRFXGL::Util::LogManager::instance()->close();
 			
 			//
-			//mAppWasInitialized = false;
+			mAppWasInitialized = false;
 			
 			//
-			//OnShutDown ();
-		// }
-		JRFXGL::Util::LogManager::instance()->close();
-        //delete Graphics::GUIManager::instance();
+			OnShutDown ();
+		 }
+		//JRFXGL::Util::LogManager::instance()->close();
+        	//delete Graphics::GUIManager::instance();
 	}
 
 
@@ -325,11 +323,11 @@ namespace JRFXGL
 			OnRender();
             
 			// Custom GUI render
-            JRFXGL::Graphics::GUIManager::instance() -> enter2D(mWidth, mHeight);
+            JRFXGL::Graphics::GUIManager::getInstance().enter2D(mWidth, mHeight);
 			glDisable(GL_LIGHTING);
 			mStats.show();
             OnGUI();
-			JRFXGL::Graphics::GUIManager::instance() -> leave2D();
+			JRFXGL::Graphics::GUIManager::getInstance().leave2D();
             
 			// Swap buffers
 			SDL_GL_SwapBuffers();

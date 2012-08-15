@@ -16,8 +16,6 @@
 // INCLUDES
 //---------------
 #include <string>
-#include <boost/scoped_ptr.hpp>
-
 #include <FTGL/ftgl.h>
 
 namespace JRFXGL
@@ -43,29 +41,33 @@ namespace JRFXGL
 	class GUIManager
 	{
 	  public:
-		  
-		  // Recuperar instância
-		  static GUIManager* instance()
-		  {
-			  return _instance;
-		  }
-		
-
 		  // Entra no modo 2D
 		  void enter2D(int width, int height);
 
 		  // Sai do modo 2D
 		  void leave2D();
 
+		  static GUIManager& getInstance()
+		  {
+			static GUIManager instance;
+
+			return instance;
+		  }
+
 	   public:
 		  
 		  // Escrever um texto na tela
 		  void label(std::string text, int x, int y);
 
-	public:
-		GUIManager();
+	private:
+  		GUIManager( const GUIManager& op ); 
+   		GUIManager& operator=( const GUIManager& op ); 
 
+
+	public:
 		~GUIManager();
+
+		GUIManager();
 
 			
 	  private:  		 
@@ -74,7 +76,6 @@ namespace JRFXGL
 
 		  // Fonte padrão do sistema
 		  FTFont*                   mSystemFont;
-          static GUIManager* _instance;
 	};
 
 

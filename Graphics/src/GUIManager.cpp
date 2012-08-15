@@ -2,17 +2,13 @@
 #include "../../Util/inc/Error.h"
 #include "GL/glew.h"
 
-JRFXGL::Graphics::GUIManager* JRFXGL::Graphics::GUIManager::_instance = NULL;
-
 namespace JRFXGL
 {
 
 	namespace Graphics
 	{
-
 		GUIManager::GUIManager()
 		{
-            _instance = this;
             
 			mSystemFont = new FTGLBitmapFont("resources/arial.ttf");
 
@@ -26,7 +22,9 @@ namespace JRFXGL
 
 		GUIManager::~GUIManager()
 		{
+			printf("Deleting GUIManager\n");
 			delete mSystemFont;
+			printf("GUIManager released.\n");
 		}
 
 

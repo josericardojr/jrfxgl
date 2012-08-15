@@ -33,8 +33,8 @@ namespace JRFXGL {
             }
             
             void show() {  
-                JRFXGL::Graphics::GUIManager::instance()->label(mFPS.str(), 10, 500);
-                JRFXGL::Graphics::GUIManager::instance()->label(mFrameTime.str(), 10, 600);
+                JRFXGL::Graphics::GUIManager::getInstance().label(mFPS.str(), 10, 500);
+                JRFXGL::Graphics::GUIManager::getInstance().label(mFrameTime.str(), 10, 600);
             }
             
         private:

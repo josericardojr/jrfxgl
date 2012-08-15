@@ -1,6 +1,6 @@
 ################################################################################
 #
-# Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
+# Copyright 1993-2011 NVIDIA Corporation.  All rights reserved.
 #
 # NVIDIA Corporation and its licensors retain all intellectual property and 
 # proprietary rights in and to this software and related documentation. 
@@ -21,9 +21,7 @@
 .SUFFIXES : .cu .cu_dbg.o .c_dbg.o .cpp_dbg.o .cu_rel.o .c_rel.o .cpp_rel.o .cubin .ptx
 
 # Add new SM Versions here as devices with new Compute Capability are released
-SM_VERSIONS   := 10 11 12 13 20
-
-NEWLINE := @printf '\n'
+SM_VERSIONS   := 10 11 12 13 20 21 30
 
 CUDA_INSTALL_PATH ?= /usr/local/cuda
 
@@ -39,6 +37,7 @@ OSLOWER = $(shell uname -s 2>/dev/null | tr [:upper:] [:lower:])
 DARWIN = $(strip $(findstring DARWIN, $(OSUPPER)))
 ifneq ($(DARWIN),)
    SNOWLEOPARD = $(strip $(findstring 10.6, $(shell egrep "<string>10\.6" /System/Library/CoreServices/SystemVersion.plist)))
+   LION        = $(strip $(findstring 10.7, $(shell egrep "<string>10\.7" /System/Library/CoreServices/SystemVersion.plist)))
 endif
 
 # detect 32-bit or 64-bit platform
@@ -51,17 +50,16 @@ SRCDIR     ?=
 ROOTDIR    ?= ..
 ROOTBINDIR ?= $(ROOTDIR)/../bin
 BINDIR     ?= $(ROOTBINDIR)/$(OSLOWER)
-ROOTOBJDIR ?= $(ROOTBINDIR)
-LIBDIR     ?= $(ROOTDIR)/lib
-COMMONDIR  ?= $(ROOTDIR)/C/common
-SHAREDDIR  ?= $(ROOTDIR)/shared
+ROOTOBJDIR ?= obj
+LIBDIR     := $(ROOTDIR)/../lib
+COMMONDIR  := $(ROOTDIR)/../common
+SHAREDDIR  := $(ROOTDIR)/../../shared/
 
 # Compilers
 NVCC       := $(CUDA_INSTALL_PATH)/bin/nvcc 
-CXX        := g++
-CC         := gcc
-LINK       := g++ -fPIC $(LINKFLAGS)
-DYLINK     := g++ -fPIC $(DYLINKFLAGS)
+CXX        := g++ -fPIC
+CC         := gcc -fPIC
+LINK       := g++ -fPIC
 
 # Includes
 INCLUDES  += -I. -I$(CUDA_INSTALL_PATH)/include -I$(COMMONDIR)/inc -I$(SHAREDDIR)/inc
@@ -92,7 +90,7 @@ CWARN_FLAGS := $(CXXWARN_FLAGS) \
 # architecture flag for nvcc and gcc compilers build
 CUBIN_ARCH_FLAG :=
 CXX_ARCH_FLAGS  :=
-#NVCCFLAGS       :=
+NVCCFLAGS       :=
 LIB_ARCH        := $(OSARCH)
 
 # Determining the necessary Cross-Compilation Flags
@@ -100,8 +98,6 @@ LIB_ARCH        := $(OSARCH)
 ifeq ($(x86_64),1) 
     NVCCFLAGS       += -m64
     LIB_ARCH         = x86_64
-    CUDPPLIB_SUFFIX  = x86_64
-
     ifneq ($(DARWIN),)
          CXX_ARCH_FLAGS += -arch x86_64
     else
@@ -112,62 +108,66 @@ else
     ifeq ($(i386),1)
         NVCCFLAGS       += -m32
         LIB_ARCH         = i386
-        CUDPPLIB_SUFFIX  = i386
-
         ifneq ($(DARWIN),)
              CXX_ARCH_FLAGS += -arch i386
         else
              CXX_ARCH_FLAGS += -m32
         endif
     else 
-        ifneq ($(SNOWLEOPARD),)
-             NVCCFLAGS += -m32
-             CXX_ARCH_FLAGS += -m32 -arch i386
-             LIB_ARCH        = i386
-             CUDPPLIB_SUFFIX = i386
+        ifeq "$(strip $(HP_64))" ""
+            LIB_ARCH        = i386
+            NVCCFLAGS      += -m32
+            ifneq ($(DARWIN),)
+               CXX_ARCH_FLAGS += -arch i386
+            else
+               CXX_ARCH_FLAGS += -m32
+            endif
         else
-             ifeq "$(strip $(HP_64))" ""
-                LIB_ARCH        = i386
-                CUDPPLIB_SUFFIX = i386
-             else
-                LIB_ARCH        = x86_64
-                CUDPPLIB_SUFFIX = x86_64
-             endif
+            LIB_ARCH        = x86_64
+            NVCCFLAGS      += -m64
+            ifneq ($(DARWIN),)
+               CXX_ARCH_FLAGS += -arch x86_64
+            else
+               CXX_ARCH_FLAGS += -m64
+            endif
         endif
     endif
 endif
 
-# Compiler-specific flags (by default, we always use sm_10 and sm_20), unless we use the SMVERSION template
+# Compiler-specific flags (by default, we always use sm_10, sm_20, and sm_30), unless we use the SMVERSION template
 GENCODE_SM10 := -gencode=arch=compute_10,code=\"sm_10,compute_10\"
-GENCODE_SM11 := -gencode=arch=compute_11,code=\"sm_11,compute_11\"
-GENCODE_SM12 := -gencode=arch=compute_12,code=\"sm_12,compute_12\"
 GENCODE_SM20 := -gencode=arch=compute_20,code=\"sm_20,compute_20\"
-
+GENCODE_SM30 := -gencode=arch=compute_30,code=\"sm_30,compute_30\"
 
 CXXFLAGS  += $(CXXWARN_FLAGS) $(CXX_ARCH_FLAGS)
 CFLAGS    += $(CWARN_FLAGS) $(CXX_ARCH_FLAGS)
 LINKFLAGS +=
 LINK      += $(LINKFLAGS) $(CXX_ARCH_FLAGS)
-DYLINK    += $(CXX_ARCH_FLAGS)
 
 # This option for Mac allows CUDA applications to work without requiring to set DYLD_LIBRARY_PATH
 ifneq ($(DARWIN),)
-   LINK += -Xlinker -rpath $(CUDA_INSTALL_PATH)/lib 
-   DYLINK += -Xlinker -rpath $(CUDA_INSTALL_PATH)/lib -Xlinker -no_compact_linkedit
+   LINK += -Xlinker -rpath $(CUDA_INSTALL_PATH)/lib
 endif
 
 # Common flags
 COMMONFLAGS += $(INCLUDES) -DUNIX
 
+# If we are enabling GPU based debugging, then we want to use -G, warning that this
+# May have a significant impact on GPU device code, since optimizations are turned off
+ifeq ($(gpudbg),1)
+    NVCCFLAGS += -G
+	dbg = $(gpudbg)
+endif
+
 # Debug/release configuration
 ifeq ($(dbg),1)
-	COMMONFLAGS += -g -O0
-	NVCCFLAGS   += -D_DEBUG
+	COMMONFLAGS += -g
+    NVCCFLAGS   += -D_DEBUG
 	CXXFLAGS    += -D_DEBUG
 	CFLAGS      += -D_DEBUG
 	BINSUBDIR   := debug
-	LIBSUFFIX   := 
-else 
+	LIBSUFFIX   := D
+else
 	COMMONFLAGS += -O2 
 	BINSUBDIR   := release
 	LIBSUFFIX   := 
@@ -182,7 +182,6 @@ CUBIN_ARCH_FLAG :=
 # OpenGL is used or not (if it is used, then it is necessary to include GLEW)
 ifeq ($(USEGLLIB),1)
     ifneq ($(DARWIN),)
-    	INCLUDES += -I/System/Library/Frameworks/OpenGL.framework/Headers
         OPENGLLIB := -L/System/Library/Frameworks/OpenGL.framework/Libraries 
         OPENGLLIB += -lGL -lGLU $(COMMONDIR)/lib/$(OSLOWER)/libGLEW.a
     else
@@ -217,7 +216,6 @@ endif
 
 ifeq ($(USEGLUT),1)
     ifneq ($(DARWIN),)
-    INCLUDES += -I/System/Library/Frameworks/GLUT.framework/Headers
 	OPENGLLIB += -framework GLUT
     else
         ifeq ($(x86_64),1)
@@ -243,14 +241,6 @@ ifeq ($(USERENDERCHECKGL),1)
 	RENDERCHECKGLLIB := -lrendercheckgl_$(LIB_ARCH)$(LIBSUFFIX)
 endif
 
-ifeq ($(USECUDPP), 1)
-    CUDPPLIB := -lcudpp_$(CUDPPLIB_SUFFIX)$(LIBSUFFIX)
-
-    ifeq ($(emu), 1)
-        CUDPPLIB := $(CUDPPLIB)_emu
-    endif
-endif
-
 ifeq ($(USENVCUVID), 1)
      ifneq ($(DARWIN),)
          NVCUVIDLIB := -L../../common/lib/darwin -lnvcuvid
@@ -259,37 +249,37 @@ endif
 
 # Libs
 ifneq ($(DARWIN),)
-    LIB       += -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib $(NVCUVIDLIB) 
+    LIB       := -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib $(NVCUVIDLIB) 
 else
   ifeq "$(strip $(HP_64))" ""
     ifeq ($(x86_64),1)
-       LIB       += -L$(CUDA_INSTALL_PATH)/lib64 -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib 
+       LIB       := -L$(CUDA_INSTALL_PATH)/lib64 -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib 
     else
-       LIB       += -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
+       LIB       := -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
     endif
   else
     ifeq ($(i386),1)
-       LIB       += -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
+       LIB       := -L$(CUDA_INSTALL_PATH)/lib -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
     else
-       LIB       += -L$(CUDA_INSTALL_PATH)/lib64 -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
+       LIB       := -L$(CUDA_INSTALL_PATH)/lib64 -L$(LIBDIR) -L$(COMMONDIR)/lib/$(OSLOWER) -L$(SHAREDDIR)/lib
     endif
   endif
 endif
 
 # If dynamically linking to CUDA and CUDART, we exclude the libraries from the LIB
 ifeq ($(USECUDADYNLIB),1)
-     LIB += ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) $(CUDPPLIB) ${LIB} -ldl -rdynamic 
+     LIB += ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) ${LIB} -ldl -rdynamic 
 else
 # static linking, we will statically link against CUDA and CUDART
   ifeq ($(USEDRVAPI),1)
-     LIB += -lcuda   ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) $(CUDPPLIB) ${LIB} 
+     LIB += -lcuda   ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) ${LIB} 
   else
      ifeq ($(emu),1) 
          LIB += -lcudartemu
      else 
          LIB += -lcudart
      endif
-     LIB += ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) $(CUDPPLIB) ${LIB}
+     LIB += ${OPENGLLIB} $(PARAMGLLIB) $(RENDERCHECKGLLIB) ${LIB}
   endif
 endif
 
@@ -309,24 +299,29 @@ ifeq ($(USECUBLAS),1)
   endif
 endif
 
-ifneq ($(FRAMEWORKS),)
-        LIB +=  $(patsubst %,-framework %,$(notdir $(FRAMEWORKS)))
+ifeq ($(USECURAND),1)
+    LIB += -lcurand
 endif
 
+ifeq ($(USECUSPARSE),1)
+  LIB += -lcusparse
+endif
+
+# Lib/exe configuration
+# Lib/exe configuration
 # Lib/exe configuration
 ifneq ($(STATIC_LIB),)
 	TARGETDIR := $(LIBDIR)
 	TARGET   := $(subst .a,_$(LIB_ARCH)$(LIBSUFFIX).a,$(LIBDIR)/$(STATIC_LIB))
 	LINKLINE  = ar rucv $(TARGET) $(OBJS)
-else ifneq ($(DYNAMIC_LIB),)
-	TARGETDIR := $(LIBDIR)
-    TARGET    := $(subst .dylib,_$(LIB_ARCH)$(LIBSUFFIX).dylib,$(LIBDIR)/$(DYNAMIC_LIB))
-    TARGETLIB := $(subst .dylib,_$(LIB_ARCH)$(LIBSUFFIX).dylib,$(DYNAMIC_LIB))
-    LINKLINE  = $(DYLINK) -dynamiclib -install_name "@executable_path/../Frameworks/$(TARGETLIB)" -o $(TARGET) $(OBJS) $(LIB)	
 else
 	ifneq ($(OMIT_CUTIL_LIB),1)
-		LIB += -lcutil_$(LIB_ARCH)$(LIBSUFFIX) -lshrutil_$(LIB_ARCH)$(LIBSUFFIX)
+		LIB += -lcutil_$(LIB_ARCH)$(LIBSUFFIX) 
 	endif
+	ifneq ($(OMIT_SHRUTIL_LIB),1)
+		LIB += -lshrutil_$(LIB_ARCH)$(LIBSUFFIX) 
+	endif
+
 	# Device emulation configuration
 	ifeq ($(emu), 1)
 		NVCCFLAGS   += -deviceemu
@@ -336,16 +331,7 @@ else
 		CXXFLAGS		+= -D__DEVICE_EMULATION__
 		CFLAGS			+= -D__DEVICE_EMULATION__
 	endif
-
-	ifeq ($(emu), 1)
-		TARGETDIR := $(BINDIR)/$(BINSUBDIR)
-	endif
-
-	ifeq ($(dbg), 1)
-		TARGETDIR := $(BINDIR)/$(BINSUBDIR)
-	endif
-
-	TARGETDIR ?= $(BINDIR)/$(BINSUBDIR)
+	TARGETDIR := $(BINDIR)/$(BINSUBDIR)
 	TARGET    := $(TARGETDIR)/$(EXECUTABLE)
 	LINKLINE  = $(LINK) -o $(TARGET) $(OBJS) $(LIB)
 endif
@@ -373,6 +359,10 @@ ifdef maxregisters
 	NVCCFLAGS += -maxrregcount $(maxregisters)
 endif
 
+ifeq ($(ptxas), 1)
+        NVCCFLAGS += --ptxas-options=-v
+endif
+
 # Add cudacc flags
 NVCCFLAGS += $(CUDACCFLAGS)
 
@@ -386,57 +376,45 @@ ifeq ($(nvcc_warn_verbose),1)
 	NVCCFLAGS += --compiler-options -fno-strict-aliasing
 endif
 
-
-
 ################################################################################
 # Set up object files
 ################################################################################
-OBJDIR := $(ROOTOBJDIR)/Build/$(LIB_ARCH)/$(BINSUBDIR)
-#OBJS +=  $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(notdir $(CCFILES)))
-OBJS +=  $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(CCFILES))
-#OBJS +=  $(patsubst %.c,$(OBJDIR)/%.c.o,$(notdir $(CFILES)))
-OBJS +=  $(patsubst %.c,$(OBJDIR)/%.c.o, $(CFILES))
-#OBJS +=  $(patsubst %.cu,$(OBJDIR)/%.cu.o,$(notdir $(CUFILES)))
-OBJS +=  $(patsubst %.cu,$(OBJDIR)/%.cu.o,$(CUFILES))
+OBJDIR := $(ROOTOBJDIR)/$(LIB_ARCH)/$(BINSUBDIR)
+OBJS +=  $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(notdir $(CCFILES)))
+OBJS +=  $(patsubst %.c,$(OBJDIR)/%.c.o,$(notdir $(CFILES)))
+OBJS +=  $(patsubst %.cu,$(OBJDIR)/%.cu.o,$(notdir $(CUFILES)))
 
 ################################################################################
 # Set up cubin output files
 ################################################################################
 CUBINDIR := $(SRCDIR)data
-#CUBINS +=  $(patsubst %.cu,$(CUBINDIR)/%.cubin,$(notdir $(CUBINFILES)))
-CUBINS +=  $(patsubst %.cu,$(CUBINDIR)/%.cubin,$(CUBINFILES))
+CUBINS +=  $(patsubst %.cu,$(CUBINDIR)/%.cubin,$(notdir $(CUBINFILES)))
 
 ################################################################################
 # Set up PTX output files
 ################################################################################
 PTXDIR := $(SRCDIR)data
-#PTXBINS +=  $(patsubst %.cu,$(PTXDIR)/%.ptx,$(notdir $(PTXFILES)))
-PTXBINS +=  $(patsubst %.cu,$(PTXDIR)/%.ptx,$(PTXFILES))
+PTXBINS +=  $(patsubst %.cu,$(PTXDIR)/%.ptx,$(notdir $(PTXFILES)))
 
 ################################################################################
 # Rules
 ################################################################################
-$(OBJDIR)/%.c.o : $(SRCDIR)/%.c $(C_DEPS)
+$(OBJDIR)/%.c.o : $(SRCDIR)%.c $(C_DEPS)
 	$(VERBOSE)$(CC) $(CFLAGS) -o $@ -c $<
-	$(NEWLINE)
 
-$(OBJDIR)/%.cpp.o : $(SRCDIR)/%.cpp $(C_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ -c $<
-	$(NEWLINE)
+$(OBJDIR)/%.cpp.o : $(SRCDIR)%.cpp $(C_DEPS)
+	$(VERBOSE)$(CXX) $(CXXFLAGS) -o $@ -c $<
 
-# Default arch includes gencode for sm_10, sm_20, and other archs from GENCODE_ARCH declared in the makefile
-$(OBJDIR)/%.cu.o : $(SRCDIR)/%.cu $(CU_DEPS)	
-	$(NVCC) $(GENCODE_ARCH) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -c $<
-	$(NEWLINE)
+# Default arch includes gencode for sm_10, sm_20, sm_30, and other archs from GENCODE_ARCH declared in the makefile
+$(OBJDIR)/%.cu.o : $(SRCDIR)%.cu $(CU_DEPS)
+	$(VERBOSE)$(NVCC) $(GENCODE_SM10) $(GENCODE_ARCH) $(GENCODE_SM20) $(GENCODE_SM30) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -c $<
 
-# Default arch includes gencode for sm_10, sm_20, and other archs from GENCODE_ARCH declared in the makefile
-#$(CUBINDIR)/%.cubin : $(SRCDIR)/%.cu cubindirectory
-#	$(NVCC) $(GENCODE_ARCH) $(CUBIN_ARCH_FLAG) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -cubin $<
-#	$(NEWLINE)
+# Default arch includes gencode for sm_10, sm_20, sm_30, and other archs from GENCODE_ARCH declared in the makefile
+$(CUBINDIR)/%.cubin : $(SRCDIR)%.cu cubindirectory
+	$(VERBOSE)$(NVCC) $(GENCODE_SM10) $(GENCODE_ARCH) $(GENCODE_SM20) $(GENCODE_SM30) $(CUBIN_ARCH_FLAG) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -cubin $<
 
-#$(PTXDIR)/%.ptx : $(SRCDIR)/%.cu ptxdirectory
-#	$(NVCC) $(CUBIN_ARCH_FLAG) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -ptx $<
-#	$(NEWLINE)
+$(PTXDIR)/%.ptx : $(SRCDIR)%.cu ptxdirectory
+	$(VERBOSE)$(NVCC) $(CUBIN_ARCH_FLAG) $(NVCCFLAGS) $(SMVERSIONFLAGS) -o $@ -ptx $<
 
 #
 # The following definition is a template that gets instantiated for each SM
@@ -455,12 +433,10 @@ $(OBJDIR)/%.cu.o : $(SRCDIR)/%.cu $(CU_DEPS)
 #
 define SMVERSION_template
 #OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu_$(1).o,$(notdir $(CUFILES_$(1))))
-#OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu_$(1).o,$(notdir $(CUFILES_sm_$(1))))
-OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu_$(1).o,$(CUFILES_$(1)))
-OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu_$(1).o,$(CUFILES_sm_$(1)))
-$(OBJDIR)/%.cu_$(1).o : $(SRCDIR)/%.cu $(CU_DEPS)
-	$(VERBOSE)$(NVCC) -gencode=arch=compute_$(1),code=\"sm_$(1),compute_$(1)\" $(GENCODE_SM20) -o $$@ -c $$< $(NVCCFLAGS)
-	$(NEWLINE)
+OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu_$(1).o,$(notdir $(CUFILES_sm_$(1))))
+$(OBJDIR)/%.cu_$(1).o : $(SRCDIR)%.cu $(CU_DEPS)
+#	$(VERBOSE)$(NVCC) -o $$@ -c $$< $(NVCCFLAGS)  $(1)
+	$(VERBOSE)$(NVCC) -gencode=arch=compute_$(1),code=\"sm_$(1),compute_$(1)\" $(GENCODE_SM20) $(GENCODE_SM30) -o $$@ -c $$< $(NVCCFLAGS)
 endef
 
 # This line invokes the above template for each arch version stored in
@@ -469,42 +445,47 @@ endef
 $(foreach smver,$(SM_VERSIONS),$(eval $(call SMVERSION_template,$(smver))))
 
 $(TARGET): makedirectories $(OBJS) $(CUBINS) $(PTXBINS) Makefile
-	$(LINKLINE)
-	$(NEWLINE)
+	$(VERBOSE)$(LINKLINE)
 
 cubindirectory:
 	$(VERBOSE)mkdir -p $(CUBINDIR)
-	$(NEWLINE)
 
 ptxdirectory:
 	$(VERBOSE)mkdir -p $(PTXDIR)
-	$(NEWLINE)
 
 makedirectories:
-	mkdir -p $(LIBDIR)
-	mkdir -p $(OBJDIR)
-	mkdir -p $(dir $(OBJS))
-	mkdir -p $(TARGETDIR)
-	$(NEWLINE)
-	
-  
+	$(VERBOSE)mkdir -p $(LIBDIR)
+	$(VERBOSE)mkdir -p $(OBJDIR)
+	$(VERBOSE)mkdir -p $(TARGETDIR)
+
+
 tidy :
-	find . | egrep "#" | xargs rm -f
-	find . | egrep "\~" | xargs rm -f
-	$(NEWLINE)
+	$(VERBOSE)find . | egrep "#" | xargs rm -f
+	$(VERBOSE)find . | egrep "\~" | xargs rm -f
 
 clean : tidy
-	rm -f $(OBJS)
-	rm -f $(CUBINS)
-	rm -f $(PTXBINS)
-	rm -f $(TARGET)
-	rm -f $(NVCC_KEEP_CLEAN)
-	rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.ppm
-	rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.pgm
-	rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.bin
-	rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.bmp
-	$(NEWLINE)
+	$(VERBOSE)rm -f *.stub.c *.gpu *.cu.cpp *.i *.ii
+	$(VERBOSE)rm -f *.cubin *.ptx *.fatbin.c *.hash
+	$(VERBOSE)rm -f *.cudafe1.c *.cudafe2.c *.cudafe1.cpp *.cudafe2.cpp
+	$(VERBOSE)rm -f $(OBJS) 
+	$(VERBOSE)rm -f $(CUBINS)
+	$(VERBOSE)rm -f $(PTXBINS)
+	$(VERBOSE)rm -f $(TARGET)
+	$(VERBOSE)rm -f $(NVCC_KEEP_CLEAN)
+	$(VERBOSE)rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.ppm
+	$(VERBOSE)rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.pgm
+	$(VERBOSE)rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.bin
+	$(VERBOSE)rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.bmp
+	$(VERBOSE)rm -f $(ROOTBINDIR)/$(OSLOWER)/$(BINSUBDIR)/*.txt
+	$(VERBOSE)rm -f $(CUBINDIR)/*.cubin $(PTXDIR)/*.ptx
+	$(VERBOSE)rm -rf $(ROOTOBJDIR)
+	$(VERBOSE)rm -rf $(LIBDIR)
+	$(VERBOSE)rm -rf $(OBJDIR)
+	$(VERBOSE)rm -rf $(TARGETDIR)
 
 clobber : clean
-	rm -rf $(ROOTOBJDIR)
-	$(NEWLINE)
+	$(VERBOSE)rm -rf $(COMMONDIR)/lib/*.a
+	$(VERBOSE)rm -rf $(SHAREDDIR)/lib/*.a
+	$(VERBOSE)rm -rf $(COMMONDIR)/obj
+	$(VERBOSE)rm -rf $(SHAREDDIR)/obj
+

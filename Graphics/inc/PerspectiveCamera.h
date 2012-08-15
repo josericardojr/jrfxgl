@@ -57,7 +57,7 @@ namespace JRFXGL
 
 		 // Reiniciar o estado da câmera para um estado padrão
 		 //
-		 virtual void   ;
+		 virtual void  reset();
 		   
 		   
 		   

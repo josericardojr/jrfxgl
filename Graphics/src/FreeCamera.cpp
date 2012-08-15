@@ -63,11 +63,11 @@ namespace JRFXGL
 	void FreeCamera::applyTransform () 
 	{
 		mProjection.apply();
-		//mc::math::Matrix4f rot;
-		//orientation.getValue(rot);
-		//rot.transpose();
-		//glMultMatrixf(rot.getArray());
-		//glTranslatef(-position.x, -position.y, -position.z);
+		mc::math::Matrix4f rot;
+		orientation.getValue(rot);
+		rot.transpose();
+		glMultMatrixf(rot.getArray());
+		glTranslatef(-position.x, -position.y, -position.z);
 	}
 
 

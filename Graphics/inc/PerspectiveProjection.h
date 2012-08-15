@@ -72,7 +72,6 @@ namespace JRFXGL
 		 void apply ()
 			{
 				glMatrixMode (GL_PROJECTION);
-				printf("%f, %f, %f, %f\n", fovX, mAspectRatio, nearPlane, farPlane);
 				glLoadIdentity ();				
 				gluPerspective (fovX, mAspectRatio, nearPlane, farPlane);
 				
